@@ -175,12 +175,12 @@ AddOrder(OrderType.BUY_TO_CLOSE,
 ##############################################################
 
 AddOrder(OrderType.SELL_TO_CLOSE,
-    min_until_close <= 0,
+    min_until_close <= 15,
     price = close,
     name = "Flat at Market Close");
 
 AddOrder(OrderType.BUY_TO_CLOSE,
-    min_until_close <= 0,
+    min_until_close <= 15,
     price = close,
     name = "Flat at Market Close");
 
