@@ -1,0 +1,193 @@
+# thinkscript strategy template
+
+##############################################################
+#######################  Strategy Setup  #####################
+##############################################################
+
+# Common settings for studies
+input length = 14;
+input over_sold = 20;
+input over_bought = 80;
+input look_back = 3;
+input fastLength = 20;
+input slowLength = 60;
+input trendLength = 200;
+input averageType = AverageType.Exponential;
+
+def   FastMA = MovingAverage(averageType, close, fastLength);
+def   SlowMA = MovingAverage(averageType, close, slowLength);
+
+# Trading Hours
+input marketOpenBuffer = 15;
+input marketCloseBuffer = 30;
+
+def   min_until_close = 
+    (RegularTradingEnd(GetYYYYMMDD()) - GetTime()) / AggregationPeriod.MIN;
+AddLabel(yes, "Minutes until close (mins): " + min_until_close);
+
+def   min_from_open =
+    (GetTime() - RegularTradingStart(GetYYYYMMDD())) / AggregationPeriod.MIN;
+AddLabel(yes, "Mintues since the open:  " + min_from_open);
+
+# Position sizing
+input margin = 5000;
+input account_balance = 10000;
+input position_size = .01; # Risk 1% per trade
+input risk_reward_ratio = 2;
+def   orderSize =
+ if (GetSymbol() == "/ES") then 1
+ else RoundDown(margin / (close / 2), 0);
+
+# Targets
+def   entryPrice = EntryPrice();
+input ES_Prof_Tar = 20;
+input ES_Loss_Lim = 8;
+input offsetType = {percent, value, default tick};
+def   mult;
+switch (offsetType) {
+case percent:
+    mult = entryPrice / 100;
+case value:
+    mult = 1;
+case tick:
+    mult = TickSize();
+}
+def   tickLossLim = 
+ if (GetSymbol() == "/ES") then ES_Loss_Lim
+ else ((account_balance * position_size) / orderSize) * 100;
+def   tickProfTarget =
+ if (GetSymbol() == "/ES") then ES_Prof_Tar
+ else ((account_balance * position_size) / orderSize) * 100 * risk_reward_ratio;
+def   longStopPrice = entryPrice - tickLossLim * mult;
+def   shortStopPrice = entryPrice + tickLossLim * mult;
+def   longLimitPrice = entryPrice + tickLossLim * mult * risk_reward_ratio;
+def   shortLimitPrice = entryPrice - tickLossLim * mult * risk_reward_ratio;
+
+# Trailing stops
+def price = if IsNaN(entryPrice[1]) then entryPrice else if !IsNaN(entryPrice) then Max(high, price[1]) else entryPrice;
+
+def trailStopPrice = price - tickLossLim * mult;
+
+addOrder(OrderType.SELL_TO_CLOSE,
+    low <= trailStopPrice,
+    name = "Trailing Stop");
+
+addOrder(OrderType.BUY_TO_CLOSE,
+    high >= trailStopPrice,
+    name = "Trailing Stop");
+
+# Are profit targets enabled
+input enable_profit_target = {default Y, N};
+def   p_target;
+switch (enable_profit_target) {
+case Y:
+    p_target = 1;
+case N:
+    p_target = 0;
+}
+
+# Are stop losses enabled
+input enable_loss_limit = {default Y, N};
+def   l_target;
+switch (enable_profit_target) {
+case Y:
+    l_target = 1;
+case N:
+    l_target = 0;
+}
+
+# Trade direction
+input trade_direction = {default Both, Long, Short};
+def   open_trade;
+switch (trade_direction) {
+case Both:
+    open_trade = 2;
+case Long:
+    open_trade = 1;
+case Short:
+    open_trade = 0;
+}
+def open_longs = if open_trade == 2 or
+    open_trade == 1 then 1
+    else 0;
+def open_shorts = if open_trade == 2 or
+    open_trade == 0 then 1
+    else 0;
+
+##############################################################
+#######################  Strategy Logic  #####################
+##############################################################
+
+                                                  
+
+##############################################################
+######################  Enter Position  ######################
+##############################################################
+
+AddOrder(OrderType.BUY_TO_OPEN,
+
+    open_longs == 1 and
+    min_until_close > marketCloseBuffer and
+    min_from_open > marketOpenBuffer,
+    price = open[-1],
+    tradeSize = orderSize,
+    name = "Long Open");
+
+AddOrder(OrderType.SELL_TO_OPEN,
+
+    open_shorts == 1 and
+    min_until_close > marketCloseBuffer and
+    min_from_open > marketOpenBuffer,
+    price = open[-1],
+    tradeSize = orderSize,
+    name = "Short Open");
+
+##############################################################
+#################  Exit Profit Target  #######################
+##############################################################
+
+AddOrder(OrderType.SELL_TO_CLOSE,
+    p_target == 1 and
+    high >= longLimitPrice,
+    price = longLimitPrice,
+    name = "Profit Target");
+
+AddOrder(OrderType.BUY_TO_CLOSE,
+    p_target == 1 and
+    low <= shortLimitPrice,
+    price = shortLimitPrice,
+    name = "Profit Target");
+
+##############################################################
+#################  Exit Loss Limit  ##########################
+##############################################################
+
+AddOrder(OrderType.SELL_TO_CLOSE,
+    l_target == 1 and
+    low <= longStopPrice,
+    price = longStopPrice,
+    name = "Stop Loss");
+
+AddOrder(OrderType.BUY_TO_CLOSE,
+    l_target == 1 and
+    high >= shortStopPrice,
+    price = shortStopPrice,
+    name = "Loss Limit");
+
+##############################################################
+#################  Exit Market Closing  ######################
+##############################################################
+
+AddOrder(OrderType.SELL_TO_CLOSE,
+    min_until_close <= 0,
+    price = close,
+    name = "Flat at Market Close");
+
+AddOrder(OrderType.BUY_TO_CLOSE,
+    min_until_close <= 0,
+    price = close,
+    name = "Flat at Market Close");
+
+##############################################################
+#################  End Script  ###############################
+##############################################################
