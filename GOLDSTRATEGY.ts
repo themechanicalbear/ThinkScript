@@ -8,18 +8,30 @@ def   min_from_open = (GetTime() - RegularTradingStart(GetYYYYMMDD())) / Aggrega
 AddLabel(yes, "Mintues since the open:  " + min_from_open);
 
 # Number of minutes that must remain until the market close to open a new order
-input marketCloseBuffer = 30;
+input marketCloseBuffer = 15;
 def min_until_close = (RegularTradingEnd(GetYYYYMMDD()) - GetTime()) / AggregationPeriod.MIN;
 AddLabel(yes, "Minutes until close (mins): " + min_until_close);
 
+# Is close at market close enabled
+input enable_market_close = {default Y, N};
+def   mc_target;
+switch (enable_market_close) {
+case Y:
+    mc_target = 1;
+case N:
+    mc_target = 0;
+}
+
 # Close all open trades when the market closes with the closing bar close price
 AddOrder(OrderType.SELL_TO_CLOSE,
-    min_until_close <= 0,
+    mc_target == 1 and
+    min_until_close <= marketCloseBuffer,
     price = close,
     name = "Flat at Market Close");
 
 AddOrder(OrderType.BUY_TO_CLOSE,
-    min_until_close <= 0,
+    mc_target == 1 and
+    min_until_close <= marketCloseBuffer,
     price = close,
     name = "Flat at Market Close");
 
@@ -74,9 +86,9 @@ case N:
 }
 
 def profit_target =
- if (GetSymbol() == "SPY") then .50
+ if (GetSymbol() == "SPY") then 3 * ATR()
  else if (GetSymbol() == "QQQ") then .32
- else if (GetSymbol() == "/ES") then 5
+ else if (GetSymbol() == "/ES") then 2
  else if (GetSymbol() == "/NQ") then 12.5
  else 1;
 
@@ -193,20 +205,30 @@ AddOrder(OrderType.BUY_TO_CLOSE,
 #######################  Enter Position  #####################
 ##############################################################
 
-def displace = 0;
-def bb_length = 20;
-def Num_Dev_Dn = -2.0;
-def Num_Dev_up = 2.0;
-def bb_averageType = AverageType.Simple;
+# Indicator Scoring
+def bb   = if BollingerPercentB() > 90 then 5
+           else if BollingerPercentB() < 10 then -5
+           else 0;
+def md   = if MACD() > 0 then 5
+           else if MACD() < 0 then -5
+           else 0;
+def rsiW = if RSI() > 80 then 5
+           else if RSI() < 20 then -5
+           else 0;
+def bop  = if BalanceOfMarketPower() > 0 then 5
+           else if BalanceOfMarketPower() < 0 then -5
+           else 0;
+def mfi  = if MoneyFlowIndex() > 80 then 5
+           else if MoneyFlowIndex() < 20 then -5
+           else 0;
 
-def sDev = stdev(data = close[-displace], length = bb_length);
+# Point Sum / Plot
+def sum = bb + md + rsiW + bop + mfi;
 
-def MidLine = MovingAverage(bb_averageType, data = close[-displace], length = bb_length);
-def LowerBand = MidLine + num_Dev_Dn * sDev;
-def UpperBand = MidLine + num_Dev_Up * sDev;                                               
+##################################################                                          
 
 AddOrder(OrderType.BUY_TO_OPEN,
- close crosses above LowerBand and
+ sum == -25 and
  open_longs == 1 and
  min_until_close > marketCloseBuffer and
  min_from_open > marketOpenBuffer,
@@ -215,7 +237,7 @@ AddOrder(OrderType.BUY_TO_OPEN,
  name = "Long Open");
 
 AddOrder(OrderType.SELL_TO_OPEN,
- close crosses below UpperBand and
+ sum == 25 and
  open_shorts == 1 and
  min_until_close > marketCloseBuffer and
  min_from_open > marketOpenBuffer,
