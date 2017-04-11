@@ -200,6 +200,61 @@ AddOrder(OrderType.BUY_TO_CLOSE,
 ################################## END TRAILING STOP  #########################################
 
 
+################################## Move STOP TO BE  ###########################################
+
+# Are stop losses enabled
+input enable_be_stop = {default Y, N};
+def   be_enable;
+switch (enable_be_stop) {
+case Y:
+    be_enable = 1;
+case N:
+    be_enable = 0;
+}
+
+def be_target =
+ if (GetSymbol() == "SPY") then .25
+ else if (GetSymbol() == "QQQ") then .16
+ else if (GetSymbol() == "/ES") then 2
+ else if (GetSymbol() == "/NQ") then 6
+ else 1;
+
+def max_high = if IsNaN(entryPrice[1]) then
+ entryPrice()
+ else if !IsNaN(entryPrice[0]) then
+ Max(high, max_high[1])
+ else entryPrice();
+
+def max_low = if IsNaN(entryPrice[1]) then
+ entryPrice()
+ else if !IsNaN(entryPrice[0]) then
+ Min(low, max_low[1])
+ else entryPrice();
+
+def long_be_target_price = entryPrice + be_target;
+def short_be_target_price = entryPrice - be_target;
+
+def long_be_target_hit = if max_high >= long_be_target_price then 1
+ else 0;
+def short_be_target_hit = if max_low <= short_be_target_price then 1
+ else 0;
+
+AddOrder(OrderType.SELL_TO_CLOSE,
+    be_enable == 1 and
+    long_be_target_hit == 1 and
+    low <= entryPrice,
+    price = entryPrice,
+    name = "BE Stop");
+
+AddOrder(OrderType.BUY_TO_CLOSE,
+    be_enable == 1 and
+    short_be_target_hit == 1 and
+    high >= entryPrice,
+    price = entryPrice,
+    name = "BE Stop");
+
+################################## END MOVE STOP TO BE ########################################
+
 ##############################################################
 #######################  Strategy Logic  #####################
 #######################  Enter Position  #####################
